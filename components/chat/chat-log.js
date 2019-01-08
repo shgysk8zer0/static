@@ -1,4 +1,4 @@
-import {importLink} from '../std-js/functions.js';
+import {importLink} from '/static/js/std-js/functions.js';
 
 export default class HTMLChatLogElement extends HTMLElement {
 	constructor() {
