@@ -1,4 +1,4 @@
-import {notify, importLink} from '/static/js/std-js/functions.js';
+import {notify, importLink} from '/js/std-js/functions.js';
 import './chat-log.js';
 
 export default class HTMLChatAppElement extends HTMLElement {
