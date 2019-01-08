@@ -1,5 +1,3 @@
-import '../std-js/deprefixer.js';
-import '../std-js/shims.js';
 import {notify, importLink} from '../std-js/functions.js';
 import './chat-log.js';
 
