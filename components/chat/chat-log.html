@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+	<head>
+		<meta charset="utf-8" />
+		<style>
+			.message {
+				clear: both;
+				border: 1px solid rgb(106, 106, 106);
+			}
+
+			.sent {
+				background-color: var(--message-sent-background, rgb(101, 98, 240));
+				float: right;
+			}
+
+			.received {
+				background-color: var(--message-received-background, rgb(166, 224, 189));
+				float: left;
+			}
+		</style>
+	</head>
+	<body>
+		<div>
+			<slot name="messages"></slot>
+		</div>
+	</body>
+</html>

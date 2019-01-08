@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+	<head>
+		<meta charset="utf-8" />
+		<style>
+			@import url("https://shgysk8zer0.github.io/static/css/core-css/element.css");
+			@import url("https://shgysk8zer0.github.io/static/css/core-css/class-rules.css");
+			chat-header {
+				display: block;
+				padding: 0.5em;
+				background-color: var(--chat-header-background, #2c2c2c);
+				color: var(--chat-header-color, #cfcfcf);
+				border-radius: 12px 12px 0 0;
+				text-align: center;
+				text-transform: capitalize;
+				cursor: pointer;
+			}
+
+			.chat-body {
+				height: 0;
+				overflow-y: hidden;
+				--message-box-height: 5rem;
+				--message-log-height: 38vh;
+				transform-origin: bottom;
+				transition: height 400ms ease-in-out;
+			}
+
+			.chat-body.open {
+				overflow-y: auto;
+				height: calc(var(--message-log-height) + var(--message-box-height));
+			}
+
+			chat-log {
+				background-color: white;
+				height: var(--message-log-height);
+				display: block;
+				border: 1px solid #343434;
+				overflow: auto;
+			}
+
+			[name="text"] {
+				display: block;
+				height: var(--message-box-height);
+				width: 100%;
+				padding: 0.3em;
+				background-color: white;
+				border: 1px solid #343434;
+				border-radius: 6px;
+			}
+
+			.message {
+				clear: both;
+				border: 1px solid rgb(106, 106, 106);
+				padding: 0.6em;
+				margin: 8px;
+				border-radius: 8px;
+				transition: opacity 250ms ease-in-out;
+			}
+
+			.sent {
+				background-color: var(--message-sent-background, rgb(101, 98, 240));
+				color: var(--message-sent-color, #222222);
+				float: right;
+			}
+
+			.message.sending {
+				opacity: 0.4;
+			}
+
+			.received {
+				background-color: var(--message-received-background, rgb(166, 224, 189));
+				color: var(--message-received-color, #222222);
+				float: left;
+			}
+		</style>
+	</head>
+	<body>
+		<chat-header class="cursor-pointer">
+			<slot name="label">Chat</slot>
+		</chat-header>
+		<div class="chat-body">
+			<chat-log></chat-log>
+			<form class="flex row">
+				<textarea name="text" placeholder="Type your message here..." required=""></textarea>
+				<input type="hidden" name="event" value="message" />
+				<button type="submit" class="btn btn-primary">
+					<slot name="submit-btn">
+						<svg class="current-color icon" viewBox="0 0 16 16">
+							<g transform="translate(-41 -907)">
+								<path d="M47 907l-4.004 2.6 2.338.364-2.01 5.806c2.241-.432 4.384.76 4.898 3.253l4.644-4.601L54 916.117 55 911l-4.814.195 1.271 1.568L47 915.508l.608-4.984 2.215.455z"/>
+								<rect width="4.994" height="4.994" x="41.994" y="917.02" display="block" rx="2.497" ry="2.497" solid-color="#000000"/>
+							</g>
+						</svg>
+					</slot>
+				</button>
+			</form>
+		</div>
+	</body>
+</html>
