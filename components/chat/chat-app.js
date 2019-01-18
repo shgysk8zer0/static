@@ -1,7 +1,7 @@
 import {notify, importLink} from '../../js/std-js/functions.js';
 import {confirm, prompt} from '../../js/std-js/asyncDialog.js';
-import '../chat-log/chat-log.js';
-import '../chat-message/chat-message.js';
+import '../chat-log.js';
+import '../chat-message.js';
 
 async function requirePrompt(text, {initial = '', test = resp => resp !== ''} = {}) {
 	let valid = false, resp = '';
