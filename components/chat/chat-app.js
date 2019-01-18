@@ -1,36 +1,99 @@
-import {notify, importLink} from '/js/std-js/functions.js';
-import './chat-log.js';
+import {notify, importLink} from '../../js/std-js/functions.js';
+import {confirm, prompt} from '../../js/std-js/asyncDialog.js';
+import '../chat-log/chat-log.js';
+import '../chat-message/chat-message.js';
+
+async function requirePrompt(text, {initial = '', test = resp => resp !== ''} = {}) {
+	let valid = false, resp = '';
+	while (! valid) {
+		resp = await prompt(text, initial);
+		if (! (test instanceof Function) || test(resp)) {
+			valid = true;
+		}
+	}
+	return resp;
+}
 
 export default class HTMLChatAppElement extends HTMLElement {
 	constructor() {
 		super();
 		this.socket = undefined;
+		this.addEventListener('connect', () => {
+			const onlineIcon = this.header.querySelector('slot[name="online-icon"]');
+			const offlineIcon = this.header.querySelector('slot[name="offline-icon"]');
+			onlineIcon.hidden = false;
+			offlineIcon.hidden = true;
+			if (this.name !== null) {
+				this.socket.send(JSON.stringify({event: 'introduce', name: this.name}));
+			}
+		});
+		this.addEventListener('disconnect', () => {
+			const onlineIcon = this.header.querySelector('slot[name="online-icon"]');
+			const offlineIcon = this.header.querySelector('slot[name="offline-icon"]');
+			onlineIcon.hidden = true;
+			offlineIcon.hidden = false;
+		});
 		const shadow = this.attachShadow({mode: 'closed'});
 		importLink('chat-app-template').then(async link => {
 			await customElements.whenDefined('chat-log');
-			[...link.head.children].forEach(child => shadow.append(child));
-			[...link.body.children].forEach(child => shadow.append(child));
+			[...link.head.children].forEach(child => shadow.append(child.cloneNode(true)));
+			[...link.body.children].forEach(child => shadow.append(child.cloneNode(true)));
 			this.header = shadow.querySelector('chat-header');
 			this.messageContainer = shadow.querySelector('chat-log');
+			this.nameInput = shadow.querySelector('input[name="from"]');
+			shadow.querySelector('[data-click="exit"]').addEventListener('click', async event => {
+				event.stopPropagation();
+				if (await confirm('Are you sure you want to close this chat?')) {
+					if (this.socket instanceof WebSocket) {
+						this.disconnect();
+						this.label = 'Offline';
+					}
+				}
+			});
+			shadow.querySelector('[name="attachment"]').addEventListener('change', event => {
+				const files = event.target.files;
+				const hasAttachment = (files instanceof FileList) && [...files].some(file => file.size !== 0);
+				event.target.form.querySelector('[name="text"]').required = ! hasAttachment;
+				event.target.form.classList.toggle('has-attachment', hasAttachment);
+			}, {
+				passive: true,
+			});
 			shadow.querySelector('form').addEventListener('submit', async event => {
 				event.preventDefault();
 				await this.connected;
 				const form = new FormData(event.target);
 				const data = Object.fromEntries(form.entries());
 				event.target.reset();
-				data.time = new Date();
-				await this.messageContainer.addMessage({text: data.text, action: 'sent', date: data.time});
-				await this.send(data);
-				this.dispatchEvent(new CustomEvent('message-sent', {detail: data}));
+
+				if (data.attachment instanceof File && data.attachment.size !== 0) {
+					await this.attach(data);
+				} else {
+					data.time = new Date();
+					await this.messageContainer.addMessage({text: data.text, action: 'sent', date: data.time, from: data.from});
+					await this.send(data);
+					this.dispatchEvent(new CustomEvent('message-sent', {detail: data}));
+				}
+			});
+			shadow.querySelector('form').addEventListener('reset', event => {
+				event.target.classList.remove('has-attachment');
+				event.target.querySelector('[name="text"]').required = true;
+			}, {
+				passive: true,
 			});
 			this.body = shadow.querySelector('.chat-body');
 			this.dispatchEvent(new Event('load'));
-			this.header.addEventListener('click', () => this.toggleAttribute('open'));
+			this.header.addEventListener('click', () => {
+				if (this.socket instanceof WebSocket) {
+					this.toggleAttribute('open');
+				} else {
+					this.connect();
+				}
+			});
 		});
 
 		this.addEventListener('message-received', async event => {
 			await this.connected;
-			this.messageContainer.addMessage({text: event.detail.text, action: 'received'});
+			this.messageContainer.addMessage({text: event.detail.text, from: event.detail.from, action: 'received'});
 			if (document.visibilityState !== 'visible' || ! this.open) {
 				const notification = await notify('Message Received', {
 					body: event.detail.text,
@@ -39,10 +102,19 @@ export default class HTMLChatAppElement extends HTMLElement {
 				notification.addEventListener('click', () => this.open = true);
 			}
 		});
-	}
 
-	connectedCallback() {
-		this.connect();
+		this.addEventListener('attachment', async event => {
+			await this.connected;
+			this.messageContainer.addAttachment(event.detail);
+			if (event.detail.action === 'received' && document.visibilityState !== 'visible' || ! this.open) {
+				let {name, data} = event.detail;
+				const notification = await notify('Attachment Received', {
+					body: name,
+					icon: data,
+				});
+				notification.addEventListener('click', () => this.open = true);
+			}
+		});
 	}
 
 	disconnectedCallback() {
@@ -52,49 +124,143 @@ export default class HTMLChatAppElement extends HTMLElement {
 		}
 	}
 
-	async connect() {
-		await new Promise((resolve, reject) => {
-			if (! (this.socket instanceof WebSocket)) {
-				const url = new URL(this.src, document.baseURI);
-				if (this.hasAttribute('port')) {
-					url.port = this.port;
-				}
-				if (! url.protocol.startsWith('ws')) {
-					url.protocol = this.secure ? 'wss:' : 'ws:';
-				}
-				this.socket = new WebSocket(url);
+	toJSON() {
+		return this.messages;
+	}
 
-				this.socket.addEventListener('close', event => {
-					this.remove();
+	async paired() {
+		await new Promise(async resolve => {
+			if ((this.socket instanceof WebSocket) && this.socket.paired === true) {
+				resolve();
+			} else {
+				await this.connected;
+				this.socket.paired = true;
+				this.addEventListener('paired', () => resolve(), {once: true});
+			}
+		});
+		this.dispatchEvent(new Event('paired'));
+	}
+
+	disconnect() {
+		if (this.socket instanceof WebSocket) {
+			this.socket.close();
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	async connect() {
+		await new Promise(async (resolve, reject) => {
+			if (this.name === null) {
+				this.name = await requirePrompt('Please enter your name.');
+			}
+
+			if (! (this.socket instanceof WebSocket)) {
+				this.label = 'Waiting for connection';
+				this.socket = new WebSocket(this.src);
+
+				this.socket.addEventListener('close', async event => {
 					this.socket = undefined;
+					this.open = false;
+					this.dispatchEvent(new Event('disconnect'));
 					notify('Connection closed', {
-						body: event.reason || 'Try refreshing the page to reconnect',
+						body: event.reason || 'Click to to reconnect',
 					});
 				});
 
-				this.socket.addEventListener('message', msg => {
+				this.socket.addEventListener('message', async msg => {
+					if (typeof msg.data !== 'string') {
+						return;
+					}
 					const json = JSON.parse(msg.data);
-					console.log(json);
-					const {message, event} = JSON.parse(msg.data);
-					switch(event) {
+					switch (json.event) {
 					case 'message':
+						let {message, contentType = 'text/plain', time = new Date(), from = this.name} = JSON.parse(msg.data);
 						this.dispatchEvent(new CustomEvent('message-received', {detail: {
 							text: message,
+							contentType,
+							time,
+							from,
 						}}));
 						break;
-					default: throw new Error(`Unhandled event: "${event}"`);
+					case 'attachment':
+						try {
+							let {size, contentType, time, data, name, text = '', action = 'received', from = this.name} = json;
+							this.dispatchEvent(new CustomEvent('attachment', {detail: {size, contentType, time, data, name, text, action, from}}));
+						} catch (err) {
+							console.error(err);
+						}
+						break;
+					case 'paired':
+						this.dispatchEvent(new Event('paired'));
+						break;
+					case 'prompt':
+						const {text, initial = ''} = json;
+						this.socket.send(await requirePrompt(text, {initial}));
+						break;
+
+					case 'introduce':
+						this.label = json.name;
+						break;
+					case 'notify':
+						const {title, body, icon = new URL('img/chat.svg', document.baseURI)} = json;
+						notify(title, {body, icon});
+						break;
+					case 'meta':
+						if ('label' in json) {
+							this.label = json.label;
+						}
+						if ('header-background' in json)  {
+							this.headerBackground = json['header-background'];
+						}
+						if ('header-color' in json) {
+							this.headerColor = json['header-color'];
+						}
+						break;
+					case 'hide':
+						this.hidden = true;
+						break;
+					case 'show':
+						this.hidden = false;
+						break;
+					case 'open':
+						open(json.url);
+						break;
+					case 'log':
+						console.log(json.data);
+						break;
+					case 'info':
+						console.info(json.data);
+						break;
+					case 'table':
+						console.table(json.data);
+						break;
+					case 'warn':
+						console.warn(json.data);
+						break;
+					case 'error':
+						console.error(json.data);
+						break;
+					default: throw new Error(`Unhandled event: "${json.event}"`);
 					}
 				});
 
-				this.socket.addEventListener('connect', () => resolve(this.socket));
+				this.socket.addEventListener('open', () => resolve(this.socket));
 				this.socket.addEventListener('error', event => {
-					this.socket.close();
+					this.socket.close(1011, event);
+					console.error(event);
 					reject(event);
 				});
 			} else {
 				resolve(this.socket);
 			}
 		});
+		this.dispatchEvent(new Event('connect'));
+	}
+
+	get online() {
+		return this.socket instanceof WebSocket && this.socket.readyState === WebSocket.OPEN;
 	}
 
 	get headerBackground() {
@@ -115,6 +281,14 @@ export default class HTMLChatAppElement extends HTMLElement {
 
 	get messages() {
 		return this.messageContainer.messages;
+	}
+
+	get name() {
+		return this.getAttribute('name');
+	}
+
+	set name(name) {
+		this.setAttribute('name', name);
 	}
 
 	get ready() {
@@ -148,7 +322,14 @@ export default class HTMLChatAppElement extends HTMLElement {
 	}
 
 	get src() {
-		return this.getAttribute('src') || '/';
+		const url = new URL(this.getAttribute('src'), document.baseURI);
+		if (this.hasAttribute('port')) {
+			url.port = this.port;
+		}
+		if (! url.protocol.startsWith('ws')) {
+			url.protocol = this.secure ? 'wss:' : 'ws:';
+		}
+		return url;
 	}
 
 	set src(src) {
@@ -179,12 +360,22 @@ export default class HTMLChatAppElement extends HTMLElement {
 		this.setAttribute('label', label);
 	}
 
+	get disabled() {
+		return this.hasAttribute('disabled');
+	}
+
+	set disabled(disabled) {
+		this.toggleAttribute('disabled', disabled);
+	}
+
 	static get observedAttributes() {
 		return [
 			'open',
 			'label',
 			'header-background',
 			'header-color',
+			'name',
+			'disabled',
 		];
 	}
 
@@ -200,7 +391,18 @@ export default class HTMLChatAppElement extends HTMLElement {
 				this.append(el);
 				break;
 			case 'open':
-				this.body.classList.toggle('open', newValue === '');
+				this.body.classList.toggle('open', newValue === '') && ! this.disabled;
+				if (newValue !== null) {
+					this.body.querySelector('[name="text"]').focus();
+				}
+				break;
+			case 'disabled':
+				if (newValue !== null) {
+					this.open = false;
+					this.classList.add('no-pointer-events', 'cursor-not-allowed');
+				} else {
+					this.classList.remove('no-pointer-events', 'cursor-not-allowed');
+				}
 				break;
 			case 'header-background':
 				this.headerBackground = newValue;
@@ -208,15 +410,44 @@ export default class HTMLChatAppElement extends HTMLElement {
 			case 'header-color':
 				this.headercolor = newValue;
 				break;
+			case 'name':
+				this.nameInput.value = newValue;
+				await this.paired();
+				this.socket.send(JSON.stringify({event: 'introduce', name: newValue}));
+				break;
 			default:
-				throw new Error(`Unhandled attribute change: {name: ${name}, oldValue: ${oldValue}, newValue: ${newValue}}`);
+				throw new Error(`Unhandled attribute change: ${JSON.stringify({name, oldValue, newValue})}`);
 			}
 		});
 	}
 
-	async send({text = '', event = 'message', time = new Date()}) {
-		time = time.toISOString();
-		this.socket.send(JSON.stringify({message: text, event, time}));
+	async send({text = '', contentType = 'text/plain', event = 'message', time = new Date(), from = this.name}) {
+		this.socket.send(JSON.stringify({message: text, contentType, event, time: time.toISOString(), from}));
+	}
+
+	async attach({attachment, time = new Date(), text = '', from = this.name}) {
+		const msg = await new Promise((resolve, reject) => {
+			if (! (attachment instanceof File)) {
+				reject(new TypeError('Attachment must be a File'));
+			} else {
+				const reader = new FileReader();
+				reader.addEventListener('load', event => resolve({
+					event: 'attachment',
+					size: attachment.size,
+					contentType: attachment.type,
+					name: attachment.name,
+					data: event.target.result,
+					time,
+					text,
+					from,
+				}));
+				reader.addEventListener('error', reject);
+				reader.readAsDataURL(attachment);
+			}
+		});
+		this.socket.send(JSON.stringify(msg));
+		msg.action = 'sent';
+		this.dispatchEvent(new CustomEvent('attachment', {detail: msg}));
 	}
 
 	clearMessages() {
@@ -224,6 +455,4 @@ export default class HTMLChatAppElement extends HTMLElement {
 	}
 }
 
-if (window.customElements && window.customElements.define instanceof Function) {
-  customElements.define('chat-app', HTMLChatAppElement);
-}
+customElements.define('chat-app', HTMLChatAppElement);

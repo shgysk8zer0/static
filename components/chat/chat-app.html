@@ -3,8 +3,27 @@
 	<head>
 		<meta charset="utf-8" />
 		<style>
-			@import url("https://brave-yonath-11358e.netlify.com/css/core-css/element.css");
-			@import url("https://brave-yonath-11358e.netlify.com/css/core-css/class-rules.css");
+			@import url("/css/core-css/element.css");
+			@import url("/css/core-css/class-rules.css");
+
+			button, [role="button"] {
+				font-size: var(--button-font-size, inherit);
+				line-height: var(--button-line-height, inherit);
+			}
+
+			button.background-none {
+				background: none;
+			}
+
+			[data-click="close"] {
+				align-self: flex-end;
+			}
+
+			slot[name="label"] {
+				display: inline-block;
+				flex-grow: 1;
+			}
+
 			chat-header {
 				display: block;
 				padding: 0.5em;
@@ -23,6 +42,7 @@
 				--message-log-height: 38vh;
 				transform-origin: bottom;
 				transition: height 400ms ease-in-out;
+				background-color: var(--chat-bg, #fefefe);
 			}
 
 			.chat-body.open {
@@ -34,17 +54,13 @@
 				background-color: white;
 				height: var(--message-log-height);
 				display: block;
-				border: 1px solid #343434;
 				overflow: auto;
 			}
 
 			[name="text"] {
-				display: block;
-				height: var(--message-box-height);
-				width: 100%;
+				grid-area: message-box;
 				padding: 0.3em;
 				background-color: white;
-				border: 1px solid #343434;
 				border-radius: 6px;
 			}
 
@@ -55,6 +71,7 @@
 				margin: 8px;
 				border-radius: 8px;
 				transition: opacity 250ms ease-in-out;
+				width: 80%;
 			}
 
 			.sent {
@@ -72,28 +89,62 @@
 				color: var(--message-received-color, #222222);
 				float: left;
 			}
+
+			form.grid {
+				display: grid;
+				grid-template-columns: 6fr 1fr;
+				grid-template-rows: repeat(2, calc(var(--message-box-height) / 2));
+				grid-row-gap: 3px;
+				grid-column-gap: 8px;
+				grid-template-areas: 'message-box send-btn'
+				'message-box attachment-btn';
+			}
+
+			.attachment-btn {
+				grid-area: attachment-btn;
+			}
+
+			.send-btn {
+				grid-area: send-btn;
+			}
 		</style>
 	</head>
 	<body>
-		<chat-header class="cursor-pointer">
-			<slot name="label">Chat</slot>
-		</chat-header>
-		<div class="chat-body">
-			<chat-log></chat-log>
-			<form class="flex row">
-				<textarea name="text" placeholder="Type your message here..." required=""></textarea>
-				<input type="hidden" name="event" value="message" />
-				<button type="submit" class="btn btn-primary">
-					<slot name="submit-btn">
-						<svg class="current-color icon" viewBox="0 0 16 16">
-							<g transform="translate(-41 -907)">
-								<path d="M47 907l-4.004 2.6 2.338.364-2.01 5.806c2.241-.432 4.384.76 4.898 3.253l4.644-4.601L54 916.117 55 911l-4.814.195 1.271 1.568L47 915.508l.608-4.984 2.215.455z"/>
-								<rect width="4.994" height="4.994" x="41.994" y="917.02" display="block" rx="2.497" ry="2.497" solid-color="#000000"/>
-							</g>
-						</svg>
-					</slot>
+		<div class="grid border-box">
+			<chat-header class="chat-header cursor-pointer flex row no-wrap">
+				<slot name="label">Chat</slot>
+				<slot name="online-icon" class="inline-block" hidden="" title="Status: Offline">
+					<svg class="current-color icon" viewBox="0 0 16 16">
+						<path d="M5 7c-.31 0-.615.09-.813.281L.594 11l3.656 3.719c.198.19.44.281.75.281h1v-1c0-.257-.13-.529-.313-.719L4.407 12H9c.528.007 1-.472 1-1s-.472-1.007-1-1H4.375l1.219-1.281C5.776 8.529 6 8.257 6 8V7zm6.594 2c.31 0 .614-.09.812-.281L16 5l-3.656-3.719c-.198-.19-.44-.281-.75-.281h-1v1c0 .257.13.529.312.719L12.187 4H7c-.528-.007-1 .472-1 1s.472 1.007 1 1h5.219L11 7.281c-.183.19-.406.462-.406.719v1z" overflow="visible"/>
+					</svg>
+				</slot>
+				<slot name="offline-icon" class="inline-block" title="Status: Online">
+					<svg class="current-color icon" viewBox="0 0 16 16">
+						<path d="M5 7c-.31 0-.615.09-.812.281L.594 11l3.656 3.719c.198.19.44.281.75.281h1v-1c0-.257-.13-.529-.312-.719L4.406 12H10v-2H4.375l1.219-1.281C5.777 8.529 6 8.257 6 8V7z" opacity=".5" overflow="visible"/>
+						<path d="M11 11h1.375l1.125 1.094L14.594 11H16v1.469l-1.094 1.062L16 14.594V16h-1.438L13.5 14.937 12.437 16H11v-1.406l1.063-1.063L11 12.47V11z" overflow="visible"/>
+						<path d="M11 9c.31 0 .615-.09.813-.281L15.406 5 11.75 1.281C11.552 1.091 11.31 1 11 1h-1v1c0 .257.13.529.313.719L11.593 4H7c-.528-.007-1 .472-1 1s.472 1.007 1 1h4.625l-1.219 1.281c-.182.19-.406.462-.406.719v1z" opacity=".5" overflow="visible"/>
+					</svg>
+				</slot>
+				<button type="button" class="background-none" title="Exit chat" data-click="exit">
+					<slot name="close-btn">X</slot>
 				</button>
-			</form>
+			</chat-header>
+			<div class="chat-body">
+				<chat-log></chat-log>
+				<form class="grid">
+					<textarea name="text" placeholder="Type your message here..." required=""></textarea>
+					<input type="hidden" name="event" value="message" />
+					<input type="hidden" name="contentType" value="text/plain" />
+					<input type="file" id="chat-attachment" name="attachment" accept="image/*" hidden="" />
+					<input type="hidden" name="from">
+					<button type="submit" class="btn btn-primary send-btn">
+						<slot name="submit-btn" class="inline-block">&check;</slot>
+					</button>
+					<label for="chat-attachment" role="button" class="attachment-btn btn btn-primary" title="Add Attachment">
+						<slot name="attachment-btn" class="inline-block">+</slot>
+					</label>
+				</form>
+			</div>
 		</div>
 	</body>
 </html>

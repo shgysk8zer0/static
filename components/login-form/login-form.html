@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+	<head>
+		<meta charset="utf-8" />
+		<style>
+			@import url("/css/core-css/element.css");
+			@import url("/css/core-css/class-rules.css");
+		</style>
+		<form>
+	</head>
+	<body>
+			<fieldset>
+				<legend>
+					<slot name="legend"></slot>
+				</legend>
+				<div title="Email">
+					<label for="login-email">
+						<slot name="email-label"></slot>
+					</label>
+					<input type="email" name="email" id="login-email" placeholder="user@example.com" autocomplete="email" required="" />
+				</div>
+				<div title="Password">
+					<label for="login-password">
+						<slot name="password-label"></slot>
+					</label>
+					<input type="password" name="password" id="login-password" placeholder="********" minlength="8" maxlength="72" autocomplete="current-password" required="" />
+				</div>
+			</fieldset>
+			<button type="submit" title="Submit" class="btn btn-accept">
+				<slot name="submit-btn">Submit</slot>
+			</button>
+			<button type="reset" title="Cancel" class="btn btn-reject">
+				<slot name="reset-btn">Cancel</slot>
+			</button>
+		</form>
+	</body>
+</html>
